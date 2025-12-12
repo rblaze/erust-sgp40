@@ -1,5 +1,5 @@
 [package]
-name = "erust-sgp40"
+name = "sgp40"
 version = "0.1.0"
 edition = "2024"
 keywords = ["embedded-hal"]
