@@ -25,6 +25,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct Sensor<I2C> {
     i2c: I2C,
     addr: u8,
@@ -65,7 +66,21 @@ impl<I2C> Sensor<I2C> {
 }
 
 impl<I2C: I2c> Sensor<I2C> {
-    pub fn read_word(&mut self, cmd: &Cmd) -> Result<u16, Error<I2C::Error>> {
+    pub fn send_command(&mut self, cmd: &Cmd) -> Result<(), Error<I2C::Error>> {
+        self.i2c.write(self.addr, cmd)?;
+        Ok(())
+    }
+
+    pub fn read_response_word(&mut self) -> Result<u16, Error<I2C::Error>> {
+        let mut result = [0u8; 3];
+
+        self.i2c.read(self.addr, &mut result)?;
+        Self::check_crc(&result)?;
+
+        Ok(u16::from_be_bytes([result[0], result[1]]))
+    }
+
+    pub fn one_word_command(&mut self, cmd: &Cmd) -> Result<u16, Error<I2C::Error>> {
         let mut result = [0u8; 3];
 
         self.i2c.write_read(self.addr, cmd, &mut result)?;
@@ -74,7 +89,7 @@ impl<I2C: I2c> Sensor<I2C> {
         Ok(u16::from_be_bytes([result[0], result[1]]))
     }
 
-    pub fn read_three_words(&mut self, cmd: &Cmd) -> Result<[u16; 3], Error<I2C::Error>> {
+    pub fn three_words_command(&mut self, cmd: &Cmd) -> Result<[u16; 3], Error<I2C::Error>> {
         let mut result = [0u8; 9];
 
         self.i2c.write_read(self.addr, cmd, &mut result)?;

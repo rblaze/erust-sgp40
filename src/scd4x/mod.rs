@@ -1,17 +1,26 @@
+use core::fmt;
+use embedded_hal::i2c::I2c;
+
 use crate::sensirion::*;
 
 pub mod commands;
 
-use embedded_hal::i2c::I2c;
-
 const ADDR: u8 = 0x62;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Variant {
     SCD40,
     SCD41,
     SCD43,
 }
 
+impl fmt::Display for Variant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Debug)]
 pub struct SCD4x<I2C> {
     sensor: Sensor<I2C>,
 }
@@ -26,7 +35,9 @@ impl<I2C: I2c> SCD4x<I2C> {
     /// Polls the sensor for whether data from a periodic or single shot measurement is ready to be read out.
     /// Returns true if successful, false if failed.
     pub fn get_data_ready_status(&mut self) -> Result<bool, Error<I2C::Error>> {
-        let status = self.sensor.read_word(&commands::GET_DATA_READY_STATUS)?;
+        let status = self
+            .sensor
+            .one_word_command(&commands::GET_DATA_READY_STATUS)?;
 
         // From the datasheet, if the 11 LSB are 0, data is not ready.
         Ok((status & 0x7FF) != 0)
@@ -34,22 +45,40 @@ impl<I2C: I2c> SCD4x<I2C> {
 
     /// Reading out the serial number can be used to identify the chip and to verify the presence of the sensor.
     pub fn get_serial_number(&mut self) -> Result<u64, Error<I2C::Error>> {
-        let words = self.sensor.read_three_words(&commands::GET_SERIAL_NUMBER)?;
+        let words = self
+            .sensor
+            .three_words_command(&commands::GET_SERIAL_NUMBER)?;
 
         Ok((words[0] as u64) << 32 | (words[1] as u64) << 16 | (words[2] as u64))
     }
 
     /// The perform_self_test command can be used as an end-of-line test to check the sensor functionality.
     /// Returns true if no malfunction detected, false if failed.
-    pub fn perform_self_test(&mut self) -> Result<bool, Error<I2C::Error>> {
-        let status = self.sensor.read_word(&commands::PERFORM_SELF_TEST)?;
+    pub async fn perform_self_test<Waiter: embedded_hal_async::delay::DelayNs>(
+        &mut self,
+        waiter: &mut Waiter,
+    ) -> Result<bool, Error<I2C::Error>> {
+        self.start_self_test()?;
+        waiter.delay_ms(10000).await;
+        self.read_self_test_result()
+    }
+
+    pub fn start_self_test(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor.send_command(&commands::PERFORM_SELF_TEST)?;
+        Ok(())
+    }
+
+    pub fn read_self_test_result(&mut self) -> Result<bool, Error<I2C::Error>> {
+        let status = self.sensor.read_response_word()?;
 
         Ok(status == 0)
     }
 
     /// Reads out the SCD4x sensor variant
     pub fn get_sensor_variant(&mut self) -> Result<Variant, Error<I2C::Error>> {
-        let status = self.sensor.read_word(&commands::GET_SENSOR_VARIANT)?;
+        let status = self
+            .sensor
+            .one_word_command(&commands::GET_SENSOR_VARIANT)?;
 
         match status >> 12 {
             0b0000 => Ok(Variant::SCD40),
@@ -92,18 +121,28 @@ mod tests {
             _address: u8,
             operations: &mut [embedded_hal::i2c::Operation],
         ) -> Result<(), Self::Error> {
-            if let [Operation::Write(_), Operation::Read(response)] = operations {
-                if response.len() != self.response.len() {
-                    return Err(DummyError::InvalidTest);
+            match operations {
+                [Operation::Write(_), Operation::Read(response)] => {
+                    if response.len() != self.response.len() {
+                        return Err(DummyError::InvalidTest);
+                    }
+
+                    response.copy_from_slice(self.response);
+
+                    Ok(())
                 }
+                [Operation::Read(response)] => {
+                    if response.len() != self.response.len() {
+                        return Err(DummyError::InvalidTest);
+                    }
 
-                response.copy_from_slice(self.response);
+                    response.copy_from_slice(self.response);
 
-                return Ok(());
+                    Ok(())
+                }
+                // Other transactions are invalid
+                _ => Err(DummyError::InvalidTest),
             }
-
-            // Invalid transaction
-            Err(DummyError::InvalidTest)
         }
     }
 
@@ -114,7 +153,7 @@ mod tests {
         };
         let mut sensor = SCD4x::new(bus);
 
-        assert_eq!(sensor.perform_self_test(), Ok(true));
+        assert_eq!(sensor.read_self_test_result(), Ok(true));
     }
 
     #[test]
@@ -124,7 +163,7 @@ mod tests {
         };
         let mut sensor = SCD4x::new(bus);
 
-        assert_eq!(sensor.perform_self_test(), Ok(false));
+        assert_eq!(sensor.read_self_test_result(), Ok(false));
     }
 
     #[test]
