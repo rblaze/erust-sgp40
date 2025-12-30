@@ -2,7 +2,7 @@ use crate::sensirion::Cmd;
 
 // Basic commands
 pub const START_PERIODIC_MEASUREMENTS: Cmd = [0x21, 0xb1];
-pub const READ_MEASUREMENTS: Cmd = [0xec, 0x05];
+pub const READ_MEASUREMENT: Cmd = [0xec, 0x05];
 pub const STOP_PERIODIC_MEASUREMENTS: Cmd = [0x3f, 0x86];
 
 // On-chip output signal compensation

@@ -20,6 +20,23 @@ impl fmt::Display for Variant {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Measurement {
+    pub co2_ppm: u16,
+    pub temp_celsius: f32,
+    pub humidity_percent: f32,
+}
+
+impl fmt::Display for Measurement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{} ppm CO2, {:.1}°C, {:.1}% RH",
+            self.co2_ppm, self.temp_celsius, self.humidity_percent
+        )
+    }
+}
+
 #[derive(Debug)]
 pub struct SCD4x<I2C> {
     sensor: Sensor<I2C>,
@@ -86,6 +103,48 @@ impl<I2C: I2c> SCD4x<I2C> {
             0b0101 => Ok(Variant::SCD43),
             _ => Err(Error::InvalidResponse),
         }
+    }
+
+    /// Command returns a sensor running in periodic measurement mode or low power
+    /// periodic measurement mode back to the idle state, e.g. to then allow
+    /// changing the sensor configuration or to save power.
+    /// Note that the sensor will only respond to other commands 500 ms after the
+    /// stop_periodic_measurement command has been issued.
+    pub fn stop_periodic_measurement(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor
+            .send_command(&commands::STOP_PERIODIC_MEASUREMENTS)?;
+        Ok(())
+    }
+
+    /// Starts the periodic measurement mode. The signal update interval is 5 seconds.
+    pub fn start_periodic_measurement(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor
+            .send_command(&commands::START_PERIODIC_MEASUREMENTS)?;
+        Ok(())
+    }
+
+    /// Starts the low power periodic measurement mode. The signal update
+    /// interval is approximately 30 seconds.
+    pub fn start_low_power_periodic_measurement(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor
+            .send_command(&commands::START_LOW_POWER_PERIODIC_MEASUREMENT)?;
+        Ok(())
+    }
+
+    /// Reads the sensor output. The measurement data can only be read out once
+    /// per signal update interval as the buffer is emptied upon read-out.
+    /// If no data is available in the buffer, the sensor returns a NACK.
+    /// To avoid a NACK response, the get_data_ready_status can be issued to
+    /// check data status.
+    pub fn read_measurement(&mut self) -> Result<Measurement, Error<I2C::Error>> {
+        let response = self
+            .sensor
+            .three_words_command(&commands::READ_MEASUREMENT)?;
+        Ok(Measurement {
+            co2_ppm: response[0],
+            temp_celsius: -45.0 + 175.0 * (response[1] as f32 / 65535.0),
+            humidity_percent: 100.0 * response[2] as f32 / 65535.0,
+        })
     }
 }
 
@@ -229,6 +288,22 @@ mod tests {
         assert!(matches!(
             sensor.get_sensor_variant(),
             Ok(super::Variant::SCD43)
+        ));
+    }
+
+    #[test]
+    fn test_get_measurement() {
+        let bus = DummyBus {
+            response: &[0x01, 0xf4, 0x33, 0x66, 0x67, 0xa2, 0x5e, 0xb9, 0x3c],
+        };
+        let mut sensor = SCD4x::new(bus);
+        let result = sensor.read_measurement();
+        println!("result: {:?}", result);
+        assert!(matches!(
+            result,
+            Ok(m) if m.co2_ppm == 500
+                && (m.temp_celsius * 100.0).floor() == 2500.0
+                && (m.humidity_percent * 100.0).floor() == 3700.0
         ));
     }
 }
