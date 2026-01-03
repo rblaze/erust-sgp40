@@ -70,21 +70,13 @@ impl<I2C: I2c> SCD4x<I2C> {
     }
 
     /// The perform_self_test command can be used as an end-of-line test to check the sensor functionality.
-    /// Returns true if no malfunction detected, false if failed.
-    pub async fn perform_self_test<Waiter: embedded_hal_async::delay::DelayNs>(
-        &mut self,
-        waiter: &mut Waiter,
-    ) -> Result<bool, Error<I2C::Error>> {
-        self.start_self_test()?;
-        waiter.delay_ms(10000).await;
-        self.read_self_test_result()
-    }
-
     pub fn start_self_test(&mut self) -> Result<(), Error<I2C::Error>> {
         self.sensor.send_command(&commands::PERFORM_SELF_TEST)?;
         Ok(())
     }
 
+    /// Returns true if no malfunction detected, false if failed.
+    /// Result is available 10s after self-test is started.
     pub fn read_self_test_result(&mut self) -> Result<bool, Error<I2C::Error>> {
         let status = self.sensor.read_response_word()?;
 
