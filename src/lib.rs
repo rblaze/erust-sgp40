@@ -5,4 +5,7 @@ pub mod scd4x;
 mod sensirion;
 pub mod sgp40;
 
+#[cfg(test)]
+pub mod debug_utils;
+
 pub use sensirion::Error;

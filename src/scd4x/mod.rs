@@ -143,59 +143,7 @@ impl<I2C: I2c> SCD4x<I2C> {
 #[cfg(test)]
 mod tests {
     use super::SCD4x;
-    use embedded_hal::i2c::{Error, Operation};
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    enum DummyError {
-        InvalidTest,
-    }
-
-    impl Error for DummyError {
-        fn kind(&self) -> embedded_hal::i2c::ErrorKind {
-            match &self {
-                DummyError::InvalidTest => embedded_hal::i2c::ErrorKind::Other,
-            }
-        }
-    }
-
-    struct DummyBus<'a> {
-        pub response: &'a [u8],
-    }
-
-    impl embedded_hal::i2c::ErrorType for DummyBus<'_> {
-        type Error = DummyError;
-    }
-
-    impl embedded_hal::i2c::I2c for DummyBus<'_> {
-        fn transaction(
-            &mut self,
-            _address: u8,
-            operations: &mut [embedded_hal::i2c::Operation],
-        ) -> Result<(), Self::Error> {
-            match operations {
-                [Operation::Write(_), Operation::Read(response)] => {
-                    if response.len() != self.response.len() {
-                        return Err(DummyError::InvalidTest);
-                    }
-
-                    response.copy_from_slice(self.response);
-
-                    Ok(())
-                }
-                [Operation::Read(response)] => {
-                    if response.len() != self.response.len() {
-                        return Err(DummyError::InvalidTest);
-                    }
-
-                    response.copy_from_slice(self.response);
-
-                    Ok(())
-                }
-                // Other transactions are invalid
-                _ => Err(DummyError::InvalidTest),
-            }
-        }
-    }
+    use crate::debug_utils::DummyBus;
 
     #[test]
     fn test_perform_self_test_success() {

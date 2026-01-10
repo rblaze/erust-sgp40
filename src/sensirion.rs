@@ -103,6 +103,35 @@ impl<I2C: I2c> Sensor<I2C> {
             u16::from_be_bytes([result[6], result[7]]),
         ])
     }
+
+    pub fn one_word_command_with_args(
+        &mut self,
+        cmd: &Cmd,
+        arg1: u16,
+        arg2: u16,
+    ) -> Result<u16, Error<I2C::Error>> {
+        let mut command_buf = [0u8; 8];
+        command_buf[0] = cmd[0];
+        command_buf[1] = cmd[1];
+
+        let arg1_bytes = arg1.to_be_bytes();
+        command_buf[2] = arg1_bytes[0];
+        command_buf[3] = arg1_bytes[1];
+        command_buf[4] = Self::crc(&arg1_bytes);
+
+        let arg2_bytes = arg2.to_be_bytes();
+        command_buf[5] = arg2_bytes[0];
+        command_buf[6] = arg2_bytes[1];
+        command_buf[7] = Self::crc(&arg2_bytes);
+
+        let mut result_buf = [0u8; 3];
+
+        self.i2c
+            .write_read(self.addr, &command_buf, &mut result_buf)?;
+        Self::check_crc(&result_buf)?;
+
+        Ok(u16::from_be_bytes([result_buf[0], result_buf[1]]))
+    }
 }
 
 #[cfg(test)]
