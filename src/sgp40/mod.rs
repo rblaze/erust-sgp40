@@ -22,7 +22,9 @@ impl<I2C: I2c> SGP40<I2C> {
     /// for integrity of both hotplate and MOX material.
     /// Returns true if successful, false if failed.
     pub fn self_test(&mut self) -> Result<bool, Error<I2C::Error>> {
-        let result = self.sensor.one_word_command(&commands::EXECUTE_SELF_TEST)?;
+        let result = self
+            .sensor
+            .execute_command_0a1r(&commands::EXECUTE_SELF_TEST)?;
 
         match result >> 8 {
             0xd4 => Ok(true),
@@ -36,7 +38,7 @@ impl<I2C: I2c> SGP40<I2C> {
     pub fn get_serial_number(&mut self) -> Result<u64, Error<I2C::Error>> {
         let words = self
             .sensor
-            .three_words_command(&commands::GET_SERIAL_NUMBER)?;
+            .execute_command_0a3r(&commands::GET_SERIAL_NUMBER)?;
 
         Ok((words[0] as u64) << 32 | (words[1] as u64) << 16 | (words[2] as u64))
     }
@@ -56,7 +58,7 @@ impl<I2C: I2c> SGP40<I2C> {
         let temp_ticks = Self::temp_to_ticks(temp_celsius);
 
         self.sensor
-            .one_word_command_with_args(&commands::MEASURE_RAW_SIGNAL, rh_ticks, temp_ticks)
+            .execute_command_2a1r(&commands::MEASURE_RAW_SIGNAL, rh_ticks, temp_ticks)
     }
 
     fn rh_to_ticks(rh: f32) -> u16 {

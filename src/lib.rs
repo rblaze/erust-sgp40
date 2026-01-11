@@ -6,6 +6,6 @@ mod sensirion;
 pub mod sgp40;
 
 #[cfg(test)]
-pub mod debug_utils;
+mod debug_utils;
 
 pub use sensirion::Error;

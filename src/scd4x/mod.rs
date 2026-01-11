@@ -54,7 +54,7 @@ impl<I2C: I2c> SCD4x<I2C> {
     pub fn get_data_ready_status(&mut self) -> Result<bool, Error<I2C::Error>> {
         let status = self
             .sensor
-            .one_word_command(&commands::GET_DATA_READY_STATUS)?;
+            .execute_command_0a1r(&commands::GET_DATA_READY_STATUS)?;
 
         // From the datasheet, if the 11 LSB are 0, data is not ready.
         Ok((status & 0x7FF) != 0)
@@ -64,7 +64,7 @@ impl<I2C: I2c> SCD4x<I2C> {
     pub fn get_serial_number(&mut self) -> Result<u64, Error<I2C::Error>> {
         let words = self
             .sensor
-            .three_words_command(&commands::GET_SERIAL_NUMBER)?;
+            .execute_command_0a3r(&commands::GET_SERIAL_NUMBER)?;
 
         Ok((words[0] as u64) << 32 | (words[1] as u64) << 16 | (words[2] as u64))
     }
@@ -87,7 +87,7 @@ impl<I2C: I2c> SCD4x<I2C> {
     pub fn get_sensor_variant(&mut self) -> Result<Variant, Error<I2C::Error>> {
         let status = self
             .sensor
-            .one_word_command(&commands::GET_SENSOR_VARIANT)?;
+            .execute_command_0a1r(&commands::GET_SENSOR_VARIANT)?;
 
         match status >> 12 {
             0b0000 => Ok(Variant::SCD40),
@@ -131,12 +131,149 @@ impl<I2C: I2c> SCD4x<I2C> {
     pub fn read_measurement(&mut self) -> Result<Measurement, Error<I2C::Error>> {
         let response = self
             .sensor
-            .three_words_command(&commands::READ_MEASUREMENT)?;
+            .execute_command_0a3r(&commands::READ_MEASUREMENT)?;
         Ok(Measurement {
             co2_ppm: response[0],
             temp_celsius: -45.0 + 175.0 * (response[1] as f32 / 65535.0),
             humidity_percent: 100.0 * response[2] as f32 / 65535.0,
         })
+    }
+
+    pub fn persist_settings(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor.send_command(&commands::PERSIST_SETTINGS)
+    }
+
+    pub fn perform_factory_reset(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor.send_command(&commands::PERFORM_FACTORY_RESET)
+    }
+
+    pub fn reinit(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor.send_command(&commands::REINIT)
+    }
+
+    pub fn measure_single_shot(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor.send_command(&commands::MEASURE_SINGLE_SHOT)
+    }
+
+    pub fn measure_single_shot_rht_only(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor
+            .send_command(&commands::MEASURE_SINGLE_SHOT_RHT_ONLY)
+    }
+
+    pub fn power_down(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor.send_command(&commands::POWER_DOWN)
+    }
+
+    pub fn wake_up(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor.send_command(&commands::WAKE_UP)
+    }
+
+    pub fn set_temperature_offset(
+        &mut self,
+        t_offset_celsius: f32,
+    ) -> Result<(), Error<I2C::Error>> {
+        let arg = (t_offset_celsius * 65536.0 / 175.0) as u16;
+        self.sensor
+            .send_command_1a(&commands::SET_TEMPERATURE_OFFSET, arg)
+    }
+
+    pub fn get_temperature_offset(&mut self) -> Result<f32, Error<I2C::Error>> {
+        let val = self
+            .sensor
+            .execute_command_0a1r(&commands::GET_TEMPERATURE_OFFSET)?;
+        Ok(val as f32 * 175.0 / 65536.0)
+    }
+
+    pub fn set_sensor_altitude(&mut self, altitude_m: u16) -> Result<(), Error<I2C::Error>> {
+        self.sensor
+            .send_command_1a(&commands::SET_SENSOR_ALTITUDE, altitude_m)
+    }
+
+    pub fn get_sensor_altitude(&mut self) -> Result<u16, Error<I2C::Error>> {
+        self.sensor
+            .execute_command_0a1r(&commands::GET_SENSOR_ALTITUDE)
+    }
+
+    pub fn set_ambient_pressure(&mut self, pressure_hpa: u16) -> Result<(), Error<I2C::Error>> {
+        self.sensor
+            .send_command_1a(&commands::SET_AMBIENT_PRESSURE, pressure_hpa)
+    }
+
+    pub fn perform_forced_recalibration(
+        &mut self,
+        target_co2_ppm: u16,
+    ) -> Result<i16, Error<I2C::Error>> {
+        let val = self
+            .sensor
+            .execute_command_1a1r(&commands::PERFORM_FORCED_RECALIBRATION, target_co2_ppm)?;
+        if val == 0xFFFF {
+            Err(Error::CommandFailed) // FRC failed
+        } else {
+            Ok(((val as i32) - 0x8000) as i16)
+        }
+    }
+
+    pub fn set_automatic_self_calibration_enabled(
+        &mut self,
+        enabled: bool,
+    ) -> Result<(), Error<I2C::Error>> {
+        let arg = if enabled { 1 } else { 0 };
+        self.sensor
+            .send_command_1a(&commands::SET_AUTOMATIC_SELF_CALIBRATION_ENABLED, arg)
+    }
+
+    pub fn get_automatic_self_calibration_enabled(&mut self) -> Result<bool, Error<I2C::Error>> {
+        let val = self
+            .sensor
+            .execute_command_0a1r(&commands::GET_AUTOMATIC_SELF_CALIBRATION_ENABLED)?;
+        Ok(val != 0)
+    }
+
+    pub fn set_automatic_self_calibration_target(
+        &mut self,
+        target_ppm: u16,
+    ) -> Result<(), Error<I2C::Error>> {
+        self.sensor
+            .send_command_1a(&commands::SET_AUTOMATIC_SELF_CALIBRATION_TARGET, target_ppm)
+    }
+
+    pub fn get_automatic_self_calibration_target(&mut self) -> Result<u16, Error<I2C::Error>> {
+        self.sensor
+            .execute_command_0a1r(&commands::GET_AUTOMATIC_SELF_CALIBRATION_TARGET)
+    }
+
+    pub fn set_automatic_self_calibration_initial_period(
+        &mut self,
+        hours: u16,
+    ) -> Result<(), Error<I2C::Error>> {
+        self.sensor.send_command_1a(
+            &commands::SET_AUTOMATIC_SELF_CALIBRATION_INITIAL_PERIOD,
+            hours,
+        )
+    }
+
+    pub fn get_automatic_self_calibration_initial_period(
+        &mut self,
+    ) -> Result<u16, Error<I2C::Error>> {
+        self.sensor
+            .execute_command_0a1r(&commands::GET_AUTOMATIC_SELF_CALIBRATION_INITIAL_PERIOD)
+    }
+
+    pub fn set_automatic_self_calibration_standard_period(
+        &mut self,
+        hours: u16,
+    ) -> Result<(), Error<I2C::Error>> {
+        self.sensor.send_command_1a(
+            &commands::SET_AUTOMATIC_SELF_CALIBRATION_STANDARD_PERIOD,
+            hours,
+        )
+    }
+
+    pub fn get_automatic_self_calibration_standard_period(
+        &mut self,
+    ) -> Result<u16, Error<I2C::Error>> {
+        self.sensor
+            .execute_command_0a1r(&commands::GET_AUTOMATIC_SELF_CALIBRATION_STANDARD_PERIOD)
     }
 }
 
@@ -245,5 +382,49 @@ mod tests {
                 && (m.temp_celsius * 100.0).floor() == 2500.0
                 && (m.humidity_percent * 100.0).floor() == 3700.0
         ));
+    }
+
+    #[test]
+    fn test_get_temperature_offset() {
+        let bus = DummyBus {
+            response: &[0x09, 0x12, 0x63],
+        };
+        let mut sensor = SCD4x::new(bus);
+        assert_eq!(
+            sensor
+                .get_temperature_offset()
+                .map(|v| (v * 100.0).floor() / 100.0),
+            Ok(6.2)
+        );
+    }
+
+    #[test]
+    fn test_perform_forced_recalibration_success() {
+        let bus = DummyBus {
+            response: &[0x7f, 0xce, 0x7b],
+        };
+        let mut sensor = SCD4x::new(bus);
+        assert_eq!(sensor.perform_forced_recalibration(400), Ok(-50));
+    }
+
+    #[test]
+    fn test_perform_forced_recalibration_fail() {
+        let bus = DummyBus {
+            response: &[0xff, 0xff, 0xac],
+        };
+        let mut sensor = SCD4x::new(bus);
+        assert!(matches!(
+            sensor.perform_forced_recalibration(400),
+            Err(crate::sensirion::Error::CommandFailed)
+        ));
+    }
+
+    #[test]
+    fn test_get_sensor_altitude() {
+        let bus = DummyBus {
+            response: &[0x04, 0x4c, 0x42],
+        };
+        let mut sensor = SCD4x::new(bus);
+        assert_eq!(sensor.get_sensor_altitude(), Ok(1100));
     }
 }

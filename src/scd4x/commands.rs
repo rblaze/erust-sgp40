@@ -35,7 +35,7 @@ pub const GET_SENSOR_VARIANT: Cmd = [0x20, 0x2f];
 // Single shot measurement mode (SCD41 and SCD43)
 pub const MEASURE_SINGLE_SHOT: Cmd = [0x21, 0x9d];
 pub const MEASURE_SINGLE_SHOT_RHT_ONLY: Cmd = [0x21, 0x96];
-pub const POWER_UP: Cmd = [0x36, 0xe0];
+pub const POWER_DOWN: Cmd = [0x36, 0xe0];
 pub const WAKE_UP: Cmd = [0x36, 0xf6];
 pub const SET_AUTOMATIC_SELF_CALIBRATION_INITIAL_PERIOD: Cmd = [0x24, 0x45];
 pub const GET_AUTOMATIC_SELF_CALIBRATION_INITIAL_PERIOD: Cmd = [0x23, 0x40];

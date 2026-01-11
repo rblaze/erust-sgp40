@@ -9,6 +9,8 @@ pub enum Error<I2cError> {
     InvalidResponse,
     #[error("invalid CRC")]
     InvalidCrc,
+    #[error("command failed")]
+    CommandFailed,
     #[error(transparent)]
     I2c(#[from] I2cError),
 }
@@ -80,7 +82,7 @@ impl<I2C: I2c> Sensor<I2C> {
         Ok(u16::from_be_bytes([result[0], result[1]]))
     }
 
-    pub fn one_word_command(&mut self, cmd: &Cmd) -> Result<u16, Error<I2C::Error>> {
+    pub fn execute_command_0a1r(&mut self, cmd: &Cmd) -> Result<u16, Error<I2C::Error>> {
         let mut result = [0u8; 3];
 
         self.i2c.write_read(self.addr, cmd, &mut result)?;
@@ -89,7 +91,7 @@ impl<I2C: I2c> Sensor<I2C> {
         Ok(u16::from_be_bytes([result[0], result[1]]))
     }
 
-    pub fn three_words_command(&mut self, cmd: &Cmd) -> Result<[u16; 3], Error<I2C::Error>> {
+    pub fn execute_command_0a3r(&mut self, cmd: &Cmd) -> Result<[u16; 3], Error<I2C::Error>> {
         let mut result = [0u8; 9];
 
         self.i2c.write_read(self.addr, cmd, &mut result)?;
@@ -104,26 +106,58 @@ impl<I2C: I2c> Sensor<I2C> {
         ])
     }
 
-    pub fn one_word_command_with_args(
+    fn build_command_1a(cmd: &Cmd, arg1: u16) -> [u8; 5] {
+        let arg1_bytes = arg1.to_be_bytes();
+
+        [
+            cmd[0],
+            cmd[1],
+            arg1_bytes[0],
+            arg1_bytes[1],
+            Self::crc(&arg1_bytes),
+        ]
+    }
+
+    pub fn send_command_1a(&mut self, cmd: &Cmd, arg1: u16) -> Result<(), Error<I2C::Error>> {
+        let command_buf = Self::build_command_1a(cmd, arg1);
+        self.i2c.write(self.addr, &command_buf)?;
+        Ok(())
+    }
+
+    pub fn execute_command_1a1r(&mut self, cmd: &Cmd, arg1: u16) -> Result<u16, Error<I2C::Error>> {
+        let command_buf = Self::build_command_1a(cmd, arg1);
+        let mut result_buf = [0u8; 3];
+
+        self.i2c
+            .write_read(self.addr, &command_buf, &mut result_buf)?;
+        Self::check_crc(&result_buf)?;
+
+        Ok(u16::from_be_bytes([result_buf[0], result_buf[1]]))
+    }
+
+    fn build_command_2a(cmd: &Cmd, arg1: u16, arg2: u16) -> [u8; 8] {
+        let arg1_bytes = arg1.to_be_bytes();
+        let arg2_bytes = arg2.to_be_bytes();
+
+        [
+            cmd[0],
+            cmd[1],
+            arg1_bytes[0],
+            arg1_bytes[1],
+            Self::crc(&arg1_bytes),
+            arg2_bytes[0],
+            arg2_bytes[1],
+            Self::crc(&arg2_bytes),
+        ]
+    }
+
+    pub fn execute_command_2a1r(
         &mut self,
         cmd: &Cmd,
         arg1: u16,
         arg2: u16,
     ) -> Result<u16, Error<I2C::Error>> {
-        let mut command_buf = [0u8; 8];
-        command_buf[0] = cmd[0];
-        command_buf[1] = cmd[1];
-
-        let arg1_bytes = arg1.to_be_bytes();
-        command_buf[2] = arg1_bytes[0];
-        command_buf[3] = arg1_bytes[1];
-        command_buf[4] = Self::crc(&arg1_bytes);
-
-        let arg2_bytes = arg2.to_be_bytes();
-        command_buf[5] = arg2_bytes[0];
-        command_buf[6] = arg2_bytes[1];
-        command_buf[7] = Self::crc(&arg2_bytes);
-
+        let command_buf = Self::build_command_2a(cmd, arg1, arg2);
         let mut result_buf = [0u8; 3];
 
         self.i2c
