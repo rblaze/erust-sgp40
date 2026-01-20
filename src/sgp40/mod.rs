@@ -53,16 +53,23 @@ impl<I2C: I2c> SGP40<I2C> {
     }
 
     /// Measure raw signal with humidity and temperature compensation.
-    pub fn measure_raw_signal(
+    pub fn start_measure_raw_signal(
         &mut self,
         humidity_percent: f32,
         temp_celsius: f32,
-    ) -> Result<u16, Error<I2C::Error>> {
+    ) -> Result<(), Error<I2C::Error>> {
         let rh_ticks = Self::rh_to_ticks(humidity_percent);
         let temp_ticks = Self::temp_to_ticks(temp_celsius);
 
         self.sensor
-            .execute_command_2a1r(&commands::MEASURE_RAW_SIGNAL, rh_ticks, temp_ticks)
+            .send_command_2a(&commands::MEASURE_RAW_SIGNAL, rh_ticks, temp_ticks)
+    }
+
+    /// Returns the raw signal SRAW_VOC in ticks which is proportional to the
+    /// logarithm of the resistance of the sensing element.
+    /// Result is available 30ms after measurement is started.
+    pub fn read_measure_raw_signal_result(&mut self) -> Result<u16, Error<I2C::Error>> {
+        self.sensor.read_response_word()
     }
 
     fn rh_to_ticks(rh: f32) -> u16 {
@@ -121,7 +128,7 @@ mod tests {
         };
         let mut sensor = SGP40::new(bus);
 
-        let result = sensor.measure_raw_signal(50.0, 25.0);
+        let result = sensor.read_measure_raw_signal_result();
 
         assert_eq!(result, Ok(0xbeef));
     }

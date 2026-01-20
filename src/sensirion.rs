@@ -151,20 +151,15 @@ impl<I2C: I2c> Sensor<I2C> {
         ]
     }
 
-    pub fn execute_command_2a1r(
+    pub fn send_command_2a(
         &mut self,
         cmd: &Cmd,
         arg1: u16,
         arg2: u16,
-    ) -> Result<u16, Error<I2C::Error>> {
+    ) -> Result<(), Error<I2C::Error>> {
         let command_buf = Self::build_command_2a(cmd, arg1, arg2);
-        let mut result_buf = [0u8; 3];
-
-        self.i2c
-            .write_read(self.addr, &command_buf, &mut result_buf)?;
-        Self::check_crc(&result_buf)?;
-
-        Ok(u16::from_be_bytes([result_buf[0], result_buf[1]]))
+        self.i2c.write(self.addr, &command_buf)?;
+        Ok(())
     }
 }
 
