@@ -25,6 +25,8 @@ pub struct Measurement {
     pub co2_ppm: u16,
     pub temp_celsius: f32,
     pub humidity_percent: f32,
+    pub temp_raw: u16,
+    pub humidity_raw: u16,
 }
 
 impl fmt::Display for Measurement {
@@ -136,6 +138,8 @@ impl<I2C: I2c> SCD4x<I2C> {
             co2_ppm: response[0],
             temp_celsius: -45.0 + 175.0 * (response[1] as f32 / 65535.0),
             humidity_percent: 100.0 * response[2] as f32 / 65535.0,
+            temp_raw: response[1],
+            humidity_raw: response[2],
         })
     }
 

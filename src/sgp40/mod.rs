@@ -53,6 +53,7 @@ impl<I2C: I2c> SGP40<I2C> {
     }
 
     /// Measure raw signal with humidity and temperature compensation.
+    /// Values are in %RH and °C respectively.
     pub fn start_measure_raw_signal(
         &mut self,
         humidity_percent: f32,
@@ -61,6 +62,16 @@ impl<I2C: I2c> SGP40<I2C> {
         let rh_ticks = Self::rh_to_ticks(humidity_percent);
         let temp_ticks = Self::temp_to_ticks(temp_celsius);
 
+        self.start_measure_raw_signal_with_ticks(rh_ticks, temp_ticks)
+    }
+
+    /// Measure raw signal with humidity and temperature compensation.
+    /// Values are in ticks as returned by SCD4x.
+    pub fn start_measure_raw_signal_with_ticks(
+        &mut self,
+        rh_ticks: u16,
+        temp_ticks: u16,
+    ) -> Result<(), Error<I2C::Error>> {
         self.sensor
             .send_command_2a(&commands::MEASURE_RAW_SIGNAL, rh_ticks, temp_ticks)
     }
