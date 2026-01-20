@@ -20,13 +20,17 @@ impl<I2C: I2c> SGP40<I2C> {
 
     /// This command triggers the built-in self-test checking
     /// for integrity of both hotplate and MOX material.
-    /// Returns true if successful, false if failed.
-    pub fn self_test(&mut self) -> Result<bool, Error<I2C::Error>> {
-        let result = self
-            .sensor
-            .execute_command_0a1r(&commands::EXECUTE_SELF_TEST)?;
+    pub fn start_self_test(&mut self) -> Result<(), Error<I2C::Error>> {
+        self.sensor.send_command(&commands::EXECUTE_SELF_TEST)?;
+        Ok(())
+    }
 
-        match result >> 8 {
+    /// Returns true if no malfunction detected, false if failed.
+    /// Result is available 300ms after self-test is started.
+    pub fn read_self_test_result(&mut self) -> Result<bool, Error<I2C::Error>> {
+        let status = self.sensor.read_response_word()?;
+
+        match status >> 8 {
             0xd4 => Ok(true),
             0x4b => Ok(false),
             _ => Err(Error::InvalidResponse),
@@ -82,7 +86,7 @@ mod tests {
         };
         let mut sensor = SGP40::new(bus);
 
-        assert_eq!(sensor.self_test(), Ok(true));
+        assert_eq!(sensor.read_self_test_result(), Ok(true));
     }
 
     #[test]
@@ -92,7 +96,7 @@ mod tests {
         };
         let mut sensor = SGP40::new(bus);
 
-        assert_eq!(sensor.self_test(), Ok(false));
+        assert_eq!(sensor.read_self_test_result(), Ok(false));
     }
 
     #[test]
